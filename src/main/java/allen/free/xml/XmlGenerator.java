@@ -12,8 +12,8 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 
-public class XmlGenerator {
 
+public class XmlGenerator {
 
   public String generateXml(Object object, Class clazz) {
     StringBuilder stringBuilder = new StringBuilder();
@@ -41,53 +41,22 @@ public class XmlGenerator {
       elementName = xmlRootElement.name();
     }
     boolean selfClosing = xmlRootElement.selfClosing();
-    List<Field> elementFieldList = new ArrayList<>();
-    List<Field> attributeFieldList = new ArrayList<>();
-    buildAttributeAndElementList(clazz, elementFieldList, attributeFieldList);
+    List<Field> attributeFieldList = buildAttributeList(clazz);
+    List<Field> elementFieldList = buildElementList(clazz);
 
-    StringBuilder attributeBuilder = new StringBuilder();
+    String attributeBuilder =  buildAttributeListXml(object, attributeFieldList);
 
-    buildAttributeListXml(object, attributeFieldList, attributeBuilder);
+    String fieldBuilder =  buildFieldListXml(object, elementFieldList);
 
-    StringBuilder fieldBuilder = new StringBuilder();
 
-    buildFieldListXml(object, elementFieldList, fieldBuilder);
 
-    if (attributeBuilder.length() == 0 && fieldBuilder.length() == 0) {
-      if (selfClosing) {
-        stringBuilder.append("<" + elementName + "/>");
-      } else {
-        stringBuilder.append("<" + elementName + ">");
-        stringBuilder.append("</" + elementName + ">");
-      }
-      return stringBuilder.toString();
-    }
-
-    if (attributeBuilder.length() > 0 && fieldBuilder.length() == 0) {
-      if (selfClosing) {
-        stringBuilder.append("<" + elementName + attributeBuilder.toString() + "/>");
-      } else {
-        stringBuilder.append("<" + elementName + attributeBuilder.toString() + ">");
-        stringBuilder.append("</" + elementName + ">");
-      }
-    }
-
-    if (attributeBuilder.length() > 0 && fieldBuilder.length() > 0) {
-      stringBuilder.append("<" + elementName + attributeBuilder.toString() + ">");
-      stringBuilder.append(fieldBuilder.toString());
-      stringBuilder.append("</" + elementName + ">");
-    }
-
-    if (attributeBuilder.length() == 0 && fieldBuilder.length() > 0) {
-      stringBuilder.append("<" + elementName + ">");
-      stringBuilder.append(fieldBuilder.toString());
-      stringBuilder.append("</" + elementName + ">");
-    }
+    stringBuilder.append(buildElementXmlWithoutWrapper(elementName,false,selfClosing,attributeBuilder,fieldBuilder));
     return stringBuilder.toString();
   }
 
-  private void buildFieldListXml(Object object, List<Field> elementFieldList,
-      StringBuilder fieldBuilde) throws IllegalAccessException, NoSuchFieldException {
+  private String buildFieldListXml(Object object, List<Field> elementFieldList
+  ) throws IllegalAccessException, NoSuchFieldException {
+    StringBuilder fieldBuilder = new StringBuilder();
     for (Field elementField : elementFieldList) {
       elementField.setAccessible(true);
       StringBuilder fieldBuilderWithoutWrapper = new StringBuilder();
@@ -95,7 +64,6 @@ public class XmlGenerator {
         List elementFieldValue = (List) elementField.get(object);
         Type type = elementField.getGenericType();
         if (type instanceof ParameterizedType) {
-          ParameterizedType pt = (ParameterizedType) type;
           for (int i = 0; i < elementFieldValue.size(); i++) {
             fieldBuilderWithoutWrapper
                 .append(buildFieldXml(elementField, elementFieldValue.get(i)));
@@ -116,13 +84,14 @@ public class XmlGenerator {
         wrapperSelfClosing = xmlElementWrapper.selfClosing();
       }
       if (isNotNullAndEmpty(wrapperName)) {
-        fieldBuilde.append(buildElementXml(wrapperName, wrapperIgnoreWhenEmpty, wrapperSelfClosing,
+        fieldBuilder.append(buildElementXml(wrapperName, wrapperIgnoreWhenEmpty, wrapperSelfClosing,
             fieldBuilderWithoutWrapper.toString()));
       } else {
-        fieldBuilde.append(fieldBuilderWithoutWrapper.toString());
+        fieldBuilder.append(fieldBuilderWithoutWrapper.toString());
       }
 
     }
+    return fieldBuilder.toString();
   }
 
 
@@ -160,16 +129,14 @@ public class XmlGenerator {
       return stringBuilder.toString();
     }
 
-    List<Field> elementFieldList = new ArrayList<>();
-    List<Field> attributeFieldList = new ArrayList<>();
-    buildAttributeAndElementList(clazz, elementFieldList, attributeFieldList);
+    List<Field> attributeFieldList =  buildAttributeList(clazz);
+    List<Field> elementFieldList = buildElementList(clazz);
 
-    StringBuilder attributeBuilder = new StringBuilder();
-    buildAttributeListXml(fieldValue, attributeFieldList, attributeBuilder);
 
-    StringBuilder fieldBuilder = new StringBuilder();
+    String attributeBuilder = buildAttributeListXml(fieldValue, attributeFieldList);
 
-    buildFieldListXml(fieldValue, elementFieldList, fieldBuilder);
+    String fieldBuilder =  buildFieldListXml(fieldValue, elementFieldList);
+
 
     String elementXmlWithoutWrapper = buildElementXmlWithoutWrapper(elementName, ignoreWhenEmpty,
         selfClosing,
@@ -182,8 +149,8 @@ public class XmlGenerator {
   }
 
   private String buildElementXmlWithoutWrapper(String elementName,
-      boolean ignoreWhenEmpty, boolean selfClosing, StringBuilder attributeBuilder,
-      StringBuilder fieldBuilder) {
+      boolean ignoreWhenEmpty, boolean selfClosing, String attributeBuilder,
+      String fieldBuilder) {
     StringBuilder stringBuilder = new StringBuilder();
     if (attributeBuilder.length() == 0 && fieldBuilder.length() == 0) {
       if (ignoreWhenEmpty) {
@@ -221,8 +188,8 @@ public class XmlGenerator {
     return stringBuilder.toString();
   }
 
-  private void buildAttributeListXml(Object fieldValue, List<Field> attributeFieldList,
-      StringBuilder attributeBuilder) throws NoSuchFieldException, IllegalAccessException {
+  private String buildAttributeListXml(Object fieldValue, List<Field> attributeFieldList) throws IllegalAccessException {
+    StringBuilder attributeBuilder = new StringBuilder();
     for (Field attributeField : attributeFieldList) {
       if (!isWrapperClassOrString(attributeField.getType())) {
 
@@ -242,17 +209,12 @@ public class XmlGenerator {
       }
       attributeBuilder.append(attributeXml);
     }
+    return attributeBuilder.toString();
   }
 
-  private void buildAttributeAndElementList(Class clazz, List<Field> elementFieldList,
-      List<Field> attributeFieldList) throws NoSuchFieldException {
-
+  private List<Field> buildElementList(Class clazz) throws NoSuchFieldException {
+    List<Field> elementFieldList = new ArrayList<>();
     List<Field> fieldList = getAllField(clazz);
-    for (Field subField : fieldList) {
-      if (subField.isAnnotationPresent(XmlAttribute.class)) {
-        attributeFieldList.add(subField);
-      }
-    }
     if (clazz.isAnnotationPresent(XmlType.class)) {
       XmlType xmlType = (XmlType) clazz.getAnnotation(XmlType.class);
       String[] props = xmlType.propOrder();
@@ -269,8 +231,19 @@ public class XmlGenerator {
         }
       }
     }
+    return elementFieldList;
   }
 
+  private List<Field> buildAttributeList(Class clazz){
+    List<Field> fieldList = getAllField(clazz);
+    List<Field> attributeFieldList = new ArrayList<>();
+    for (Field subField : fieldList) {
+      if (subField.isAnnotationPresent(XmlAttribute.class)) {
+        attributeFieldList.add(subField);
+      }
+    }
+    return attributeFieldList;
+  }
 
   private String buildAttributeXml(String attributeName, Object object, boolean ignoreWhenEmpty) {
     if (object == null) {
@@ -320,18 +293,10 @@ public class XmlGenerator {
     }
     try {
       return ((Class) clazz.getDeclaredField("TYPE").get(null)).isPrimitive();
-    } catch (IllegalAccessException e) {
-
-    } catch (NoSuchFieldException e) {
+    } catch (IllegalAccessException | NoSuchFieldException e) {
 
     }
     return false;
   }
-
-
-  private boolean isWrapperClass(Class clz) throws NoSuchFieldException, IllegalAccessException {
-    return ((Class) clz.getDeclaredField("TYPE").get(null)).isPrimitive();
-  }
-
 
 }
